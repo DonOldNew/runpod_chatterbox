@@ -1,63 +1,25 @@
+"""
+RunPod Serverless Handler — Whisper STT only.
+TTS is handled by RunPod's free Chatterbox Turbo public endpoint.
+"""
 import runpod
-import torchaudio
 import os
 import tempfile
 import base64
 import torch
-from chatterbox.tts import ChatterboxTTS
 from faster_whisper import WhisperModel
 
-tts_model = None
 stt_model = None
+
 
 def handler(event):
     input_data = event["input"]
-    mode = input_data.get("mode", "tts")
+    mode = input_data.get("mode", "stt")
 
-    if mode == "tts":
-        return handle_tts(input_data)
-    elif mode == "stt":
+    if mode == "stt":
         return handle_stt(input_data)
     else:
-        return {"error": f"Unknown mode: {mode}. Use 'tts' or 'stt'."}
-
-
-def handle_tts(input_data):
-    prompt = input_data.get("prompt")
-    audio_ref_b64 = input_data.get("audio_ref")
-    exaggeration = input_data.get("exaggeration", 0.5)
-    cfg_weight = input_data.get("cfg_weight", 0.5)
-
-    if not prompt:
-        return {"error": "Missing 'prompt'"}
-    if not audio_ref_b64:
-        return {"error": "Missing 'audio_ref' (base64 WAV of reference voice)"}
-
-    print(f"TTS request. Prompt: {prompt[:80]}...")
-
-    try:
-        ref_path = save_base64_audio(audio_ref_b64, suffix=".wav")
-
-        audio_tensor = tts_model.generate(
-            prompt,
-            audio_prompt_path=ref_path,
-            exaggeration=exaggeration,
-            cfg_weight=cfg_weight,
-        )
-
-        audio_b64 = tensor_to_base64(audio_tensor, tts_model.sr)
-
-        os.unlink(ref_path)
-
-        return {
-            "status": "success",
-            "audio_base64": audio_b64,
-            "sample_rate": tts_model.sr,
-        }
-
-    except Exception as e:
-        print(f"TTS error: {e}")
-        return {"error": str(e)}
+        return {"error": f"Unknown mode: {mode}. This endpoint only supports 'stt'. Use Chatterbox Turbo public endpoint for TTS."}
 
 
 def handle_stt(input_data):
@@ -103,34 +65,16 @@ def save_base64_audio(b64_data, suffix=".wav"):
     return tmp.name
 
 
-def tensor_to_base64(audio_tensor, sample_rate):
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-        torchaudio.save(tmp.name, audio_tensor, sample_rate)
-        with open(tmp.name, "rb") as f:
-            data = f.read()
-        os.unlink(tmp.name)
-        return base64.b64encode(data).decode("utf-8")
-
-
 def initialize_models():
-    global tts_model, stt_model
+    global stt_model
 
     try:
-        print("Loading Chatterbox TTS...")
+        print("Loading Whisper Large V3...")
         print(f"CUDA available: {torch.cuda.is_available()}")
         if torch.cuda.is_available():
             print(f"GPU: {torch.cuda.get_device_name(0)}")
             print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
-        tts_model = ChatterboxTTS.from_pretrained(device="cuda")
-        print(f"Chatterbox loaded. Sample rate: {tts_model.sr}")
-    except Exception as e:
-        print(f"FATAL: Chatterbox load failed: {e}")
-        import traceback
-        traceback.print_exc()
-        raise
 
-    try:
-        print("Loading Whisper Large V3...")
         stt_model = WhisperModel(
             "large-v3",
             device="cuda",
