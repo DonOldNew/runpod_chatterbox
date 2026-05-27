@@ -1,6 +1,5 @@
 FROM runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
     wget \
@@ -14,9 +13,10 @@ COPY requirements.txt /requirements.txt
 RUN pip install -r requirements.txt
 COPY rp_handler.py /
 
-RUN python -c "from chatterbox.tts import ChatterboxTTS; model = ChatterboxTTS.from_pretrained(device='cuda')"
+# Pre-download Chatterbox model
+RUN python -c "from chatterbox.tts import ChatterboxTTS; ChatterboxTTS.from_pretrained(device='cpu')"
 
-# Start the container
+# Pre-download Whisper Large V3
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('large-v3', device='cpu', compute_type='float32')"
+
 CMD ["python3", "-u", "rp_handler.py"]
-
-
