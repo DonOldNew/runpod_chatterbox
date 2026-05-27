@@ -13,10 +13,8 @@ COPY requirements.txt /requirements.txt
 RUN pip install -r requirements.txt
 COPY rp_handler.py /
 
-# Pre-download Chatterbox model
-RUN python -c "from chatterbox.tts import ChatterboxTTS; ChatterboxTTS.from_pretrained(device='cpu')"
-
-# Pre-download Whisper Large V3
-RUN python -c "from faster_whisper import WhisperModel; WhisperModel('large-v3', device='cpu', compute_type='float32')"
+# Pre-download model weights only (no CUDA needed)
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('ResembleAI/chatterbox', local_dir='/root/.cache/huggingface/hub/chatterbox')"
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('Systran/faster-whisper-large-v3')"
 
 CMD ["python3", "-u", "rp_handler.py"]
