@@ -9,6 +9,11 @@ diffusers
 torchaudio
 torchvision
 einops
+omegaconf
+spacy-pkuseg
+pykakasi==2.3.0
+pyloudnorm
+numpy
 faster-whisper
 ffmpeg-python
 runpod>=1.7.7
