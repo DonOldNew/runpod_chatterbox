@@ -115,17 +115,33 @@ def tensor_to_base64(audio_tensor, sample_rate):
 def initialize_models():
     global tts_model, stt_model
 
-    print("Loading Chatterbox TTS...")
-    tts_model = ChatterboxTTS.from_pretrained(device="cuda")
-    print(f"Chatterbox loaded. Sample rate: {tts_model.sr}")
+    try:
+        print("Loading Chatterbox TTS...")
+        print(f"CUDA available: {torch.cuda.is_available()}")
+        if torch.cuda.is_available():
+            print(f"GPU: {torch.cuda.get_device_name(0)}")
+            print(f"VRAM: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB")
+        tts_model = ChatterboxTTS.from_pretrained(device="cuda")
+        print(f"Chatterbox loaded. Sample rate: {tts_model.sr}")
+    except Exception as e:
+        print(f"FATAL: Chatterbox load failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
-    print("Loading Whisper Large V3...")
-    stt_model = WhisperModel(
-        "large-v3",
-        device="cuda",
-        compute_type="float16",
-    )
-    print("Whisper loaded.")
+    try:
+        print("Loading Whisper Large V3...")
+        stt_model = WhisperModel(
+            "large-v3",
+            device="cuda",
+            compute_type="float16",
+        )
+        print("Whisper loaded.")
+    except Exception as e:
+        print(f"FATAL: Whisper load failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 if __name__ == "__main__":
