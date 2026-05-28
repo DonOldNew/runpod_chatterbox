@@ -245,12 +245,28 @@ def handler_batch(job):
 
 
 # ──────────────────────────────────────────────
-# Startup
+# Startup — crash-safe so we can see errors in job output
 # ──────────────────────────────────────────────
 
-load_model()
+STARTUP_ERROR = None
+
+try:
+    load_model()
+except Exception as e:
+    import traceback
+    STARTUP_ERROR = f"Model load failed: {e}\n{traceback.format_exc()}"
+    print(f"STARTUP ERROR: {STARTUP_ERROR}")
+
+
+def safe_handler(job):
+    """Wrapper that reports startup errors instead of crashing."""
+    if STARTUP_ERROR:
+        yield {"error": STARTUP_ERROR}
+        return
+    yield from handler(job)
+
 
 runpod.serverless.start({
-    "handler": handler,
+    "handler": safe_handler,
     "return_aggregate_stream": True,
 })
