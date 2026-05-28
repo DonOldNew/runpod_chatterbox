@@ -212,8 +212,16 @@ def tts_streaming(text: str) -> dict:
     job_id = data["id"]
     audio_path = str(AUDIO_DIR / f"{job_id}.wav")
 
-    # Poll /stream/{job_id} and collect all chunks
-    all_audio = b""
+    # Poll /stream/{job_id} and collect PCM chunks
+    # Each chunk is a complete WAV — decode each with wave module, keep raw PCM
+    import wave
+    import io
+
+    pcm_chunks = []
+    sample_rate = 24000
+    sample_width = 2  # 16-bit
+    n_channels = 1
+
     for _ in range(200):  # max ~100s at 0.5s interval
         try:
             status_resp = requests.get(f"{base_url}/stream/{job_id}", headers=headers, timeout=10)
@@ -229,22 +237,36 @@ def tts_streaming(text: str) -> dict:
                 return {"error": f"TTS stream error: {output['error']}", "time": time.time() - start}
 
             if output.get("done"):
-                # Write combined audio
-                if all_audio:
-                    with open(audio_path, "wb") as f:
-                        f.write(all_audio)
+                # Write combined audio as valid WAV
+                if pcm_chunks:
+                    all_pcm = b"".join(pcm_chunks)
+                    with wave.open(audio_path, "wb") as wf:
+                        wf.setnchannels(n_channels)
+                        wf.setsampwidth(sample_width)
+                        wf.setframerate(sample_rate)
+                        wf.writeframes(all_pcm)
+                    duration = len(all_pcm) / (sample_rate * sample_width * n_channels)
                     return {
                         "audio_path": audio_path,
                         "tts_mode": "streaming",
                         "chunks": output.get("total_chunks", 0),
-                        "audio_duration": output.get("total_audio_duration", 0),
+                        "audio_duration": round(duration, 3),
                         "time": time.time() - start,
                     }
                 return {"error": "No audio received", "time": time.time() - start}
 
             if "audio_base64" in output:
                 wav_data = base64.b64decode(output["audio_base64"])
-                all_audio += wav_data
+                try:
+                    with wave.open(io.BytesIO(wav_data), "rb") as wr:
+                        sample_rate = wr.getframerate()
+                        sample_width = wr.getsampwidth()
+                        n_channels = wr.getnchannels()
+                        pcm_chunks.append(wr.readframes(wr.getnframes()))
+                except Exception:
+                    # Fallback: assume 44-byte header
+                    if len(wav_data) > 44:
+                        pcm_chunks.append(wav_data[44:])
 
         status = stream_data.get("status")
         if status == "FAILED":
@@ -254,9 +276,13 @@ def tts_streaming(text: str) -> dict:
 
         time.sleep(0.5)
 
-    if all_audio:
-        with open(audio_path, "wb") as f:
-            f.write(all_audio)
+    if pcm_chunks:
+        all_pcm = b"".join(pcm_chunks)
+        with wave.open(audio_path, "wb") as wf:
+            wf.setnchannels(n_channels)
+            wf.setsampwidth(sample_width)
+            wf.setframerate(sample_rate)
+            wf.writeframes(all_pcm)
         return {
             "audio_path": audio_path,
             "tts_mode": "streaming",

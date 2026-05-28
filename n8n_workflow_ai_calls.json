@@ -1,5 +1,5 @@
 {
-  "name": "AI Phone System - WhatsApp Voice Messages",
+  "name": "AI Phone System \u2014 Carolina HR Voice Bot",
   "nodes": [
     {
       "parameters": {
@@ -8,11 +8,13 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "webhook-trigger",
-      "name": "WhatsApp Webhook",
+      "name": "Webhook: AI Call",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [220, 300],
+      "position": [
+        220,
+        300
+      ],
       "webhookId": "ai-call"
     },
     {
@@ -38,92 +40,253 @@
         },
         "options": {}
       },
-      "id": "check-audio",
-      "name": "Has Audio?",
+      "name": "Audio or Text?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [440, 300]
+      "position": [
+        440,
+        300
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "http://localhost:5050/turn",
+        "url": "http://127.0.0.1:5050/turn",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ session_id: $json.body.chat_id || $json.body.session_id || 'default', audio_base64: $json.body.audio_base64 || undefined, text: $json.body.text || undefined, language: 'es' }) }}",
+        "jsonBody": "={{ JSON.stringify({ session_id: $json.body.chat_id || $json.body.session_id || $json.body.phone || 'default', audio_base64: $json.body.audio_base64 || undefined, text: undefined, language: $json.body.language || 'es' }) }}",
         "options": {
-          "timeout": 120000
+          "timeout": 120000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 0
+            }
+          }
         }
       },
-      "id": "call-engine",
-      "name": "Call Engine /turn",
+      "name": "Call Engine (Audio)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [660, 200]
+      "position": [
+        660,
+        200
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "http://localhost:5050/turn",
+        "url": "http://127.0.0.1:5050/turn",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ session_id: $json.body.chat_id || $json.body.session_id || 'default', text: $json.body.text || $json.body.message || 'Hola', language: 'es' }) }}",
+        "jsonBody": "={{ JSON.stringify({ session_id: $json.body.chat_id || $json.body.session_id || $json.body.phone || 'default', text: $json.body.text || $json.body.message || 'Hola', language: $json.body.language || 'es' }) }}",
         "options": {
           "timeout": 120000
         }
       },
-      "id": "call-engine-text",
       "name": "Call Engine (Text)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [660, 400]
+      "position": [
+        660,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-error",
+              "leftValue": "={{ $json.error || '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Error? (Audio)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-error-text",
+              "leftValue": "={{ $json.error || '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Error? (Text)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        400
+      ]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ status: 'ok', session_id: $json.session_id, assistant_text: $json.assistant_text, audio_url: $json.audio_url, turn_number: $json.turn_number, timings: $json.timings }) }}",
+        "responseBody": "={{ JSON.stringify({ status: 'ok', session_id: $json.session_id, user_text: $json.user_text, assistant_text: $json.assistant_text, audio_path: $json.audio_path, turn_number: $json.turn_number, timings: $json.timings, tokens: $json.tokens }) }}",
         "options": {
           "responseCode": 200
         }
       },
-      "id": "respond-success",
-      "name": "Respond OK",
+      "name": "Respond OK (Audio)",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [880, 200]
+      "position": [
+        1100,
+        140
+      ]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ status: 'ok', session_id: $json.session_id, assistant_text: $json.assistant_text, audio_url: $json.audio_url, turn_number: $json.turn_number, timings: $json.timings }) }}",
+        "responseBody": "={{ JSON.stringify({ status: 'ok', session_id: $json.session_id, user_text: $json.user_text, assistant_text: $json.assistant_text, audio_path: $json.audio_path, turn_number: $json.turn_number, timings: $json.timings, tokens: $json.tokens }) }}",
         "options": {
           "responseCode": 200
         }
       },
-      "id": "respond-text",
       "name": "Respond OK (Text)",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [880, 400]
+      "position": [
+        1100,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'error', error: $json.error, session_id: $json.session_id || 'unknown' }) }}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "name": "Respond Error (Audio)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1100,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'error', error: $json.error, session_id: $json.session_id || 'unknown' }) }}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "name": "Respond Error (Text)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1100,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ai-call-health",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Health Check",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        560
+      ],
+      "webhookId": "ai-call-health"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:5050/health",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "name": "Call Engine Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "name": "Respond Health",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        560
+      ]
     }
   ],
   "connections": {
-    "WhatsApp Webhook": {
+    "Webhook: AI Call": {
       "main": [
         [
           {
-            "node": "Has Audio?",
+            "node": "Audio or Text?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Has Audio?": {
+    "Audio or Text?": {
       "main": [
         [
           {
-            "node": "Call Engine /turn",
+            "node": "Call Engine (Audio)",
             "type": "main",
             "index": 0
           }
@@ -137,11 +300,11 @@
         ]
       ]
     },
-    "Call Engine /turn": {
+    "Call Engine (Audio)": {
       "main": [
         [
           {
-            "node": "Respond OK",
+            "node": "Error? (Audio)",
             "type": "main",
             "index": 0
           }
@@ -152,7 +315,65 @@
       "main": [
         [
           {
+            "node": "Error? (Text)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error? (Audio)": {
+      "main": [
+        [
+          {
+            "node": "Respond Error (Audio)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond OK (Audio)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error? (Text)": {
+      "main": [
+        [
+          {
+            "node": "Respond Error (Text)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Respond OK (Text)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Health Check": {
+      "main": [
+        [
+          {
+            "node": "Call Engine Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Engine Health": {
+      "main": [
+        [
+          {
+            "node": "Respond Health",
             "type": "main",
             "index": 0
           }
@@ -160,11 +381,7 @@
       ]
     }
   },
-  "pinData": {},
   "settings": {
     "executionOrder": "v1"
-  },
-  "staticData": null,
-  "tags": [],
-  "triggerCount": 1
+  }
 }
