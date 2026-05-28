@@ -50,8 +50,9 @@ echo ""
 # Step 1: Build
 echo "▸ Step 1/3: Building Docker image..."
 echo "  (This downloads ~1.5 GB of model weights — first build takes 10-15 min)"
+echo "  (Building for linux/amd64 — RunPod runs x86 GPUs)"
 echo ""
-docker build -f Dockerfile.streaming -t "${FULL_IMAGE}" .
+docker build --platform linux/amd64 -f Dockerfile.streaming -t "${FULL_IMAGE}" .
 echo ""
 echo "✓ Image built: ${FULL_IMAGE}"
 echo ""
