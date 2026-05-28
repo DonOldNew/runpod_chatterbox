@@ -41,6 +41,9 @@ CHATTERBOX_URL = "https://api.runpod.ai/v2/chatterbox-turbo"
 # Voice cloning reference (set to URL of target person's voice sample)
 VOICE_CLONE_URL = os.getenv("VOICE_CLONE_URL", "")
 
+# Streaming TTS endpoint (self-hosted Chatterbox Streaming on RunPod)
+RUNPOD_STREAMING_ENDPOINT = os.getenv("RUNPOD_STREAMING_ENDPOINT", "")
+
 # Session storage directory
 SESSIONS_DIR = Path(os.getenv("SESSIONS_DIR", "/tmp/call_sessions"))
 SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
@@ -171,7 +174,100 @@ def llm(user_text: str, session: CallSession) -> dict:
 
 
 def tts(text: str) -> dict:
-    """Generate speech using Chatterbox Turbo."""
+    """Generate speech — uses streaming endpoint if configured, else batch."""
+    if RUNPOD_STREAMING_ENDPOINT:
+        return tts_streaming(text)
+    return tts_batch(text)
+
+
+def tts_streaming(text: str) -> dict:
+    """Generate speech using self-hosted Chatterbox Streaming (RunPod Serverless)."""
+    base_url = f"https://api.runpod.ai/v2/{RUNPOD_STREAMING_ENDPOINT}"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {RUNPOD_API_KEY}",
+    }
+
+    payload = {
+        "input": {
+            "text": text,
+            "chunk_size": 25,
+            "exaggeration": 0.5,
+            "cfg_weight": 0.5,
+            "temperature": 0.8,
+        }
+    }
+    if VOICE_CLONE_URL:
+        payload["input"]["voice_url"] = VOICE_CLONE_URL
+
+    start = time.time()
+
+    # Submit job
+    resp = requests.post(f"{base_url}/run", json=payload, headers=headers, timeout=30)
+    data = resp.json()
+
+    if "id" not in data:
+        return {"error": f"TTS submit failed: {json.dumps(data)}", "time": time.time() - start}
+
+    job_id = data["id"]
+    audio_path = str(AUDIO_DIR / f"{job_id}.wav")
+
+    # Poll /stream/{job_id} and collect all chunks
+    all_audio = b""
+    for _ in range(200):  # max ~100s at 0.5s interval
+        try:
+            status_resp = requests.get(f"{base_url}/stream/{job_id}", headers=headers, timeout=10)
+            stream_data = status_resp.json()
+        except Exception:
+            time.sleep(0.5)
+            continue
+
+        for chunk in stream_data.get("stream", []):
+            output = chunk.get("output", chunk)
+
+            if "error" in output:
+                return {"error": f"TTS stream error: {output['error']}", "time": time.time() - start}
+
+            if output.get("done"):
+                # Write combined audio
+                if all_audio:
+                    with open(audio_path, "wb") as f:
+                        f.write(all_audio)
+                    return {
+                        "audio_path": audio_path,
+                        "tts_mode": "streaming",
+                        "chunks": output.get("total_chunks", 0),
+                        "audio_duration": output.get("total_audio_duration", 0),
+                        "time": time.time() - start,
+                    }
+                return {"error": "No audio received", "time": time.time() - start}
+
+            if "audio_base64" in output:
+                wav_data = base64.b64decode(output["audio_base64"])
+                all_audio += wav_data
+
+        status = stream_data.get("status")
+        if status == "FAILED":
+            return {"error": f"TTS failed: {json.dumps(stream_data)[:200]}", "time": time.time() - start}
+        if status == "COMPLETED":
+            break
+
+        time.sleep(0.5)
+
+    if all_audio:
+        with open(audio_path, "wb") as f:
+            f.write(all_audio)
+        return {
+            "audio_path": audio_path,
+            "tts_mode": "streaming",
+            "time": time.time() - start,
+        }
+
+    return {"error": "TTS stream timeout", "time": time.time() - start}
+
+
+def tts_batch(text: str) -> dict:
+    """Generate speech using Chatterbox Turbo (batch, free public endpoint)."""
     payload = {"input": {"prompt": text, "format": "wav"}}
 
     if VOICE_CLONE_URL:
@@ -213,6 +309,7 @@ def tts(text: str) -> dict:
                 return {
                     "audio_path": audio_path,
                     "audio_url": output["audio_url"],
+                    "tts_mode": "batch",
                     "time": time.time() - start,
                 }
             elif isinstance(output, dict) and "audio_base64" in output:
@@ -222,6 +319,7 @@ def tts(text: str) -> dict:
                 return {
                     "audio_path": audio_path,
                     "audio_base64_size": len(output["audio_base64"]),
+                    "tts_mode": "batch",
                     "time": time.time() - start,
                 }
 
@@ -345,6 +443,7 @@ def serve(port: int = 5050):
                 self._respond(200, result)
 
             elif self.path == "/health":
+                tts_mode = "streaming" if RUNPOD_STREAMING_ENDPOINT else "batch"
                 self._respond(200, {
                     "status": "ok",
                     "components": {
@@ -352,6 +451,8 @@ def serve(port: int = 5050):
                         "deepseek": bool(DEEPSEEK_API_KEY),
                         "runpod": bool(RUNPOD_API_KEY),
                         "voice_clone": bool(VOICE_CLONE_URL),
+                        "tts_mode": tts_mode,
+                        "streaming_endpoint": RUNPOD_STREAMING_ENDPOINT or None,
                     },
                 })
 
@@ -387,6 +488,8 @@ def serve(port: int = 5050):
     print(f"  POST /turn    — Process one conversation turn")
     print(f"  POST /session — Get session history")
     print(f"  GET  /health  — Health check")
+    tts_label = f"STREAMING ({RUNPOD_STREAMING_ENDPOINT})" if RUNPOD_STREAMING_ENDPOINT else "BATCH (Chatterbox Turbo)"
+    print(f"  TTS mode:     {tts_label}")
     print(f"  Voice clone:  {'ENABLED' if VOICE_CLONE_URL else 'DISABLED (using default voice)'}")
     print()
 

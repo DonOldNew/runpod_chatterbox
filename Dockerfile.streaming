@@ -1,0 +1,51 @@
+# ──────────────────────────────────────────────
+# Chatterbox Streaming TTS — RunPod Serverless
+# ──────────────────────────────────────────────
+# GPU: 16-24 GB VRAM (A5000, L4, RTX 4090)
+# TTFB: ~472ms | RTF: ~0.5x (2x faster than realtime)
+# Voice cloning: via voice_url input parameter
+#
+# Build:
+#   docker build -f Dockerfile.streaming -t chatterbox-streaming .
+#
+# RunPod deploy:
+#   Push to Docker Hub/GHCR, then create Serverless Endpoint in RunPod.
+# ──────────────────────────────────────────────
+
+FROM runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git ffmpeg libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Downgrade torch to 2.6.0 (chatterbox-streaming requires it)
+# CUDA 12.8.1 runtime in base image is backward-compatible with cu124 wheels
+RUN pip install --no-cache-dir \
+    torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+
+# Install chatterbox-streaming + RunPod SDK
+RUN pip install --no-cache-dir \
+    "chatterbox-streaming" \
+    "runpod>=1.7.7" \
+    "requests" \
+    "numpy~=1.26.0"
+
+# Pre-download model weights into Docker image (~1.5 GB)
+# Avoids downloading at cold start — saves 30-60s per worker spin-up
+# Use CPU for download (no GPU available during docker build)
+RUN python -c "\
+import torch; print(f'torch {torch.__version__}, CUDA available: {torch.cuda.is_available()}'); \
+from chatterbox.tts import ChatterboxTTS; \
+print('Downloading model weights...'); \
+m = ChatterboxTTS.from_pretrained(device='cpu'); \
+del m; \
+import gc; gc.collect(); \
+print('Model weights cached in image.')"
+
+# Copy handler
+COPY rp_handler_streaming.py /app/rp_handler_streaming.py
+
+CMD ["python", "-u", "/app/rp_handler_streaming.py"]
