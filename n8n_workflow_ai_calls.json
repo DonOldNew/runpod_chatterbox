@@ -1,0 +1,170 @@
+{
+  "name": "AI Phone System - WhatsApp Voice Messages",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-call",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "WhatsApp Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "webhookId": "ai-call"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-audio",
+              "leftValue": "={{ $json.body.audio_url || $json.body.audio_base64 || '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-audio",
+      "name": "Has Audio?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5050/turn",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ session_id: $json.body.chat_id || $json.body.session_id || 'default', audio_base64: $json.body.audio_base64 || undefined, text: $json.body.text || undefined, language: 'es' }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "call-engine",
+      "name": "Call Engine /turn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5050/turn",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ session_id: $json.body.chat_id || $json.body.session_id || 'default', text: $json.body.text || $json.body.message || 'Hola', language: 'es' }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "call-engine-text",
+      "name": "Call Engine (Text)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'ok', session_id: $json.session_id, assistant_text: $json.assistant_text, audio_url: $json.audio_url, turn_number: $json.turn_number, timings: $json.timings }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond-success",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [880, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'ok', session_id: $json.session_id, assistant_text: $json.assistant_text, audio_url: $json.audio_url, turn_number: $json.turn_number, timings: $json.timings }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond-text",
+      "name": "Respond OK (Text)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [880, 400]
+    }
+  ],
+  "connections": {
+    "WhatsApp Webhook": {
+      "main": [
+        [
+          {
+            "node": "Has Audio?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Audio?": {
+      "main": [
+        [
+          {
+            "node": "Call Engine /turn",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Call Engine (Text)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Engine /turn": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Engine (Text)": {
+      "main": [
+        [
+          {
+            "node": "Respond OK (Text)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1
+}
