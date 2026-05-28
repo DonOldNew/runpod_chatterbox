@@ -54,7 +54,10 @@ files = ['ve.pt', 't3_cfg.pt', 's3gen.pt', 'tokenizer.json', 'conds.pt']; \
 [print(f'Downloading {f}...') or hf_hub_download(repo_id=repo, filename=f) for f in files]; \
 print('All model weights cached in image.')"
 
-# Copy handler
+# Copy handlers
 COPY rp_handler_streaming.py /app/rp_handler_streaming.py
+COPY rp_handler_debug.py /app/rp_handler_debug.py
+COPY rp_handler_minimal.py /app/rp_handler_minimal.py
 
-CMD ["python", "-u", "/app/rp_handler_streaming.py"]
+# Minimal echo handler — no model, instant startup
+CMD ["python", "-u", "/app/rp_handler_minimal.py"]

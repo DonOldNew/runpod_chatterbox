@@ -55,21 +55,36 @@ from chatterbox.tts import ChatterboxTTS
 
 MODEL: ChatterboxTTS = None
 SAMPLE_RATE: int = 24000
+MODEL_LOADING: bool = False
 
 
-def load_model():
-    """Load ChatterboxTTS at worker startup."""
-    global MODEL, SAMPLE_RATE
-    print("Loading ChatterboxTTS model...")
-    start = time.time()
+def ensure_model():
+    """Lazy-load ChatterboxTTS on first request (not at startup)."""
+    global MODEL, SAMPLE_RATE, MODEL_LOADING
+    if MODEL is not None:
+        return True
+    if MODEL_LOADING:
+        return False  # another request is already loading
 
-    MODEL = ChatterboxTTS.from_pretrained(device="cuda")
-    SAMPLE_RATE = MODEL.sr  # 24000
+    MODEL_LOADING = True
+    try:
+        print("Loading ChatterboxTTS model...", flush=True)
+        start = time.time()
 
-    elapsed = time.time() - start
-    gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU"
-    vram = torch.cuda.get_device_properties(0).total_memory / 1e9 if torch.cuda.is_available() else 0
-    print(f"Model loaded in {elapsed:.1f}s | GPU: {gpu_name} | VRAM: {vram:.1f} GB")
+        MODEL = ChatterboxTTS.from_pretrained(device="cuda")
+        SAMPLE_RATE = MODEL.sr  # 24000
+
+        elapsed = time.time() - start
+        gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU"
+        vram = torch.cuda.get_device_properties(0).total_memory / 1e9 if torch.cuda.is_available() else 0
+        print(f"Model loaded in {elapsed:.1f}s | GPU: {gpu_name} | VRAM: {vram:.1f} GB", flush=True)
+        return True
+    except Exception as e:
+        import traceback
+        print(f"MODEL LOAD ERROR: {e}", flush=True)
+        traceback.print_exc()
+        MODEL_LOADING = False
+        return False
 
 
 # ──────────────────────────────────────────────
@@ -120,6 +135,11 @@ def handler(job):
 
     if not text:
         yield {"error": "No text provided"}
+        return
+
+    # Lazy-load model on first request
+    if not ensure_model():
+        yield {"error": "Model failed to load — check worker logs"}
         return
 
     # Download voice reference if provided
@@ -248,25 +268,9 @@ def handler_batch(job):
 # Startup — crash-safe so we can see errors in job output
 # ──────────────────────────────────────────────
 
-STARTUP_ERROR = None
-
-try:
-    load_model()
-except Exception as e:
-    import traceback
-    STARTUP_ERROR = f"Model load failed: {e}\n{traceback.format_exc()}"
-    print(f"STARTUP ERROR: {STARTUP_ERROR}")
-
-
-def safe_handler(job):
-    """Wrapper that reports startup errors instead of crashing."""
-    if STARTUP_ERROR:
-        yield {"error": STARTUP_ERROR}
-        return
-    yield from handler(job)
-
+print("Handler ready — model will load on first request", flush=True)
 
 runpod.serverless.start({
-    "handler": safe_handler,
+    "handler": handler,
     "return_aggregate_stream": True,
 })
