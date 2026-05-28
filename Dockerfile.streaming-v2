@@ -1,0 +1,44 @@
+# ──────────────────────────────────────────────
+# Chatterbox Streaming TTS v2 — keep base torch
+# ──────────────────────────────────────────────
+# Uses torch 2.8.0 from base image (no downgrade).
+# Installs chatterbox-streaming without torch dependency.
+# Pre-downloads model weights in image.
+
+FROM runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install chatterbox-streaming WITHOUT its torch pin (keep base torch 2.8.0)
+# Install deps individually to avoid version conflicts
+RUN pip install --no-cache-dir --no-deps "chatterbox-streaming" && \
+    pip install --no-cache-dir \
+    "runpod>=1.7.7" \
+    "requests" \
+    "resampy==0.4.3" \
+    "librosa==0.10.0" \
+    "s3tokenizer" \
+    "transformers==4.46.3" \
+    "diffusers>=0.29.0" \
+    "resemble-perth>=1.0.1" \
+    "omegaconf>=2.3.0" \
+    "conformer>=0.3.2" \
+    "huggingface_hub" \
+    "tqdm"
+
+# Pre-download model weights (~1.5 GB) via huggingface_hub
+RUN python -c "\
+from huggingface_hub import hf_hub_download; \
+repo = 'ResembleAI/chatterbox'; \
+files = ['ve.pt', 't3_cfg.pt', 's3gen.pt', 'tokenizer.json', 'conds.pt']; \
+[print(f'Downloading {f}...') or hf_hub_download(repo_id=repo, filename=f) for f in files]; \
+print('All model weights cached.')"
+
+# Copy handler (lazy model loading)
+COPY rp_handler_streaming.py /app/rp_handler_streaming.py
+
+CMD ["python", "-u", "/app/rp_handler_streaming.py"]
