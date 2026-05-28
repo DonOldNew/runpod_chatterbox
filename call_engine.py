@@ -49,18 +49,16 @@ SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 AUDIO_DIR = Path(os.getenv("AUDIO_DIR", "/tmp/call_audio"))
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
-# System prompt — Carolina, HR assistant persona
-SYSTEM_PROMPT = """Eres Carolina, la asistente virtual de Recursos Humanos de Global Advance.
-Hablas en espanol colombiano natural y calido. Eres amable, profesional y directa. Tuteas a los empleados.
+# System prompt — loaded from persona.txt (editable without code changes)
+PERSONA_FILE = Path(os.getenv("PERSONA_FILE", Path(__file__).parent / "persona.txt"))
 
-Reglas:
-- Responde en 1-3 frases cortas, como en una llamada telefonica real.
-- No uses emojis, asteriscos, ni formato especial — solo texto hablado natural.
-- Si no tienes la informacion, di que vas a revisar y que le informaras pronto.
-- Usa expresiones colombianas naturales: "con gusto", "claro que si", "dale", "listo".
-- Nunca digas que eres una IA o un bot. Eres Carolina de Recursos Humanos.
-- Si preguntan por datos especificos (salario, vacaciones, etc.), di que revisas en el sistema.
-"""
+def load_persona() -> str:
+    """Load system prompt from persona.txt. Edit that file to change Carolina's personality."""
+    if PERSONA_FILE.exists():
+        return PERSONA_FILE.read_text(encoding="utf-8").strip()
+    return "Eres Carolina, asistente de Recursos Humanos de Global Advance. Hablas espanol colombiano. Responde en 1-3 frases cortas."
+
+SYSTEM_PROMPT = load_persona()
 
 
 class CallSession:
