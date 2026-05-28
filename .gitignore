@@ -3,3 +3,4 @@
 *.wav
 __pycache__/
 /tmp/
+venv/
